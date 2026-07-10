@@ -1,4 +1,5 @@
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
@@ -8,10 +9,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError
 
 from app.analysis.schemas import AnalysisOutput, IssueTagOutput, ScoreDimension, Scores
 from app.db import crud
-from app.db.models import Call, FlagContest, IssueTag, Team, TranscriptSegment, User
+from app.db.models import Call, FlagContest, IssueTag, ProcessingEvent, Team, TranscriptSegment, User
 from app.db.session import SessionLocal, create_all_tables
 from app.ingestion.base import NormalizedCall
 from app.pipeline.orchestrator import process_and_store_call
@@ -45,6 +47,9 @@ def clear_seed_calls(db: Session) -> None:
         db.query(FlagContest).filter(FlagContest.tag_id.in_(tag_ids)).delete(
             synchronize_session=False
         )
+    db.query(ProcessingEvent).filter(ProcessingEvent.call_id.in_(call_ids)).delete(
+        synchronize_session=False
+    )
     db.query(IssueTag).filter(IssueTag.call_id.in_(call_ids)).delete(
         synchronize_session=False
     )
@@ -190,7 +195,18 @@ def seed_demo_data(db: Session) -> dict:
 
 
 def main() -> int:
-    create_all_tables()
+    last_error = None
+    for attempt in range(1, 16):
+        try:
+            create_all_tables()
+            break
+        except OperationalError as exc:
+            last_error = exc
+            print(f"Waiting for database to accept connections ({attempt}/15)...")
+            time.sleep(2)
+    else:
+        raise last_error
+
     with SessionLocal() as db:
         result = seed_demo_data(db)
     print(

@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.db import crud
 from app.db.models import (
@@ -24,9 +24,11 @@ from app.db.models import (
     UserRole,
 )
 from app.db.session import SessionLocal
+from app.db.session import create_all_tables
 
 
 def get_session() -> Session:
+    create_all_tables()
     return SessionLocal()
 
 
@@ -42,14 +44,32 @@ def list_advisors(db: Session, team_id: UUID | None = None) -> list[User]:
 
 
 def list_recent_calls(db: Session, limit: int = 20, team_id: UUID | None = None) -> list[Call]:
-    query = db.query(Call).join(User, Call.advisor_id == User.user_id, isouter=True)
+    query = (
+        db.query(Call)
+        .options(
+            selectinload(Call.advisor).selectinload(User.team),
+            selectinload(Call.analysis),
+            selectinload(Call.issue_tags),
+        )
+        .join(User, Call.advisor_id == User.user_id, isouter=True)
+    )
     if team_id:
         query = query.filter(User.team_id == team_id)
     return query.order_by(Call.created_at.desc()).limit(limit).all()
 
 
 def get_call(db: Session, call_id: UUID) -> Call | None:
-    return crud.get_call(db, call_id)
+    return (
+        db.query(Call)
+        .options(
+            selectinload(Call.advisor).selectinload(User.team),
+            selectinload(Call.analysis),
+            selectinload(Call.issue_tags).selectinload(IssueTag.contest),
+            selectinload(Call.transcript_segments),
+        )
+        .filter(Call.call_id == call_id)
+        .first()
+    )
 
 
 def org_summary(db: Session) -> dict:
