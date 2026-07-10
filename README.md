@@ -2,6 +2,23 @@
 
 AI-powered sales-call intelligence for FitNova: ingest calls, transcribe/diarize, score call quality, flag risky moments with quote evidence, support advisor contests, and surface insights through FastAPI and Streamlit dashboards.
 
+## How It Works
+
+```
+Call Source (folder / webhook / Exotel stub)
+        -> Ingestion (idempotency check on external_call_id)
+        -> Non-sales pre-filter (short/irrelevant calls excluded, not analyzed)
+        -> PII redaction (card / phone / OTP-like patterns masked)
+        -> Transcription + diarization (advisor vs customer, timestamped)
+        -> Analysis (single structured OpenAI call: scores + issue tags + coaching)
+        -> Guardrails (quote-grounding verification, deterministic score caps)
+        -> Postgres (org -> team -> advisor -> call -> transcript -> tags)
+        -> FastAPI -> Streamlit dashboards (Sales Director / Team Leader / Advisor)
+        -> Advisor contests a flag -> Team Leader resolves it -> stored back
+```
+
+Ingestion is adapter-based so a new telephony/CRM vendor is a new adapter, not a rewrite. The one paid API call in the whole pipeline is the analysis step; transcription/diarization run locally.
+
 ## What Works
 
 - Source-agnostic ingestion skeleton with folder, webhook, and Exotel-stub adapters.
@@ -26,6 +43,43 @@ The folder ingestion adapter recognizes:
 - `.ogg`
 
 For the smoothest demo, use `.wav` or `.mp3`. Real audio mode also needs the speech dependencies and Hugging Face pyannote access.
+
+## Scoring Rubric & Issue Taxonomy
+
+**Rubric** — five dimensions, each scored 0-10, rolled up into a weighted overall score:
+
+| Dimension | Weight |
+|---|---|
+| Needs discovery | 25% |
+| Compliance | 25% |
+| Objection handling | 20% |
+| Product knowledge | 15% |
+| Next-step booking | 15% |
+
+Needs discovery and compliance carry the most weight because a mis-sold or misleading call is a worse outcome than a slightly weak pitch. The same weighted score rolls up to advisor, team, and org averages.
+
+**Issue tags** — each carries a severity (low/medium/high/critical), a timestamp, the exact quoted line, a reason, and a confidence score:
+
+- `no_needs_discovery`
+- `over_promising` (e.g. guaranteed results)
+- `pressure_or_urgency`
+- `price_before_value`
+- `undisclosed_costs`
+- `weak_or_missing_trial_booking`
+- `talking_over_customer`
+
+A verified `over_promising` tag at `critical` severity automatically caps the compliance score at 3/10, regardless of what the model scored it — a deterministic rule, not something the LLM can talk itself out of.
+
+## Edge Case Handling
+
+| Case | Handling |
+|---|---|
+| Mono recording / poor diarization | Segments are matched to the best-overlapping speaker turn; if diarization confidence is low it's recorded on the call (`diarization_quality`) instead of silently trusted. |
+| Hindi-English code-switching | Local `faster-whisper` transcription handles code-switched audio natively; no translation step that could lose meaning. |
+| Non-sales calls (wrong number, internal) | A pre-filter checks call duration and sales-relevant keywords before spending an LLM call; excluded calls are stored with status `excluded_non_sales`, not analyzed. |
+| PII in the call | Card-like numbers, phone numbers, and OTP/PIN codes are regex-redacted before the transcript is stored or sent to OpenAI. |
+| Hallucinated / false-positive tags | Every tag's quoted line is fuzzy-matched against the real transcript; unverified tags are dropped and logged to `ProcessingEvent`, never shown to a reviewer. |
+| Vendor/API failures | External calls (OpenAI, transcription) are wrapped in retry/backoff; a `(source_id, external_call_id)` unique constraint plus per-call status tracking means a failed or retried call is never double-processed. |
 
 ## Setup
 
@@ -125,16 +179,7 @@ Pages:
 - Advisor
 - Call Detail
 
-The UI has a light sky-blue theme and a pitch-black dark theme, selectable from the sidebar.
-
-Streamlit demo flow:
-
-1. Open `Process Call`.
-2. Choose `Mock demo call`.
-3. Click `Process mock call`.
-4. Open `Call Detail` and select the new call.
-5. Contest a flag from the Advisor page.
-6. Resolve the pending contest from the Team Leader page.
+The UI has a light sky-blue theme and a pitch-black dark theme, selectable from the sidebar. See **Recommended Demo Flow** above for the step-by-step walkthrough.
 
 ## Mock Pipeline Demo
 
@@ -196,25 +241,18 @@ Mocked or scoped:
 - Notifications are out of scope.
 - Real speech execution depends on local model downloads and Hugging Face access.
 
-## Video Walkthrough Script
-
-- 15 seconds: explain the FitNova problem and the end-to-end pipeline.
-- 30 seconds: process a mock call in Streamlit through `Process Call`.
-- 30 seconds: inspect the stored transcript, scores, issue flags, and coaching notes in `Call Detail`.
-- 25 seconds: contest a flag as an advisor and resolve it from the Team Leader page.
-- 20 seconds: state tradeoffs: mock telephony adapter, optional real audio setup, no production auth, no background worker.
-
 ## Test
 
 ```powershell
 pytest -q
 ```
 
-## Interview Talking Points
+## Design Decisions
 
-- Postgres fits because the data is relational: orgs, teams, advisors, calls, transcripts, tags, contests.
-- The adapter pattern prevents telephony vendor lock-in.
-- Quote grounding is necessary because false flags can unfairly penalize advisors.
-- `gpt-4o-mini` is the default model because it is cost-effective for structured scoring.
-- Contest resolution is human-driven by design; no second LLM is used to judge disputes.
-- At larger scale, synchronous processing would move to a background worker queue.
+- **PostgreSQL over a document store.** The data is inherently relational — org → team → advisor, call → transcript segments → scores → tags — and dashboards need real aggregate queries (team averages, org rollups) that relational joins handle cleanly and a document store makes awkward.
+- **Adapter pattern for ingestion.** FitNova may switch telephony or CRM vendors, or run several at once. Every source (folder, webhook, Exotel stub) normalizes into one shape before anything downstream runs, so adding a new vendor is a new adapter, not a rewrite.
+- **Quote-grounding guardrails.** An LLM can claim a flag is backed by a line the advisor never said. Every issue tag is fuzzy-matched against the actual transcript before it's trusted; unverified tags are logged and discarded rather than silently kept. A false flag is worse than a missed one — it unfairly penalizes an advisor and erodes trust in the whole system.
+- **`gpt-4o-mini` as the default model.** Cost-effective for structured scoring at call volume; the model is swappable via `OPENAI_MODEL` for higher-stakes or final scoring runs.
+- **Contest resolution stays human.** An advisor can contest a flag, but a Team Leader resolves it — deliberately not a second LLM call. Adjudicating a dispute about the model's own judgment is a human decision, not one to automate.
+- **Idempotent processing.** A unique constraint on `(source_id, external_call_id)` plus a `ProcessingEvent` log means a call is never double-processed, and every retry or rejection is auditable instead of silent.
+- **Synchronous processing, by design, for now.** At FitNova's current scale this keeps the system simple to run and reason about; the natural next step at higher call volume is moving ingestion-to-analysis onto a background worker queue.
