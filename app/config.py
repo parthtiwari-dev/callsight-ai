@@ -10,6 +10,7 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
     )
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
     huggingface_access_token: str | None = Field(
         default=None, alias="HUGGINGFACE_ACCESS_TOKEN"
     )
