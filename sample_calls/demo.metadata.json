@@ -1,0 +1,7 @@
+{
+  "external_call_id": "demo-call-001",
+  "advisor_ref": "advisor-001",
+  "customer_ref_hashed": "customer-demo-hash",
+  "started_at": "2026-07-10T13:40:00+05:30",
+  "duration_seconds": 180
+}

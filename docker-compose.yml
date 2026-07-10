@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: callsight-postgres
+    environment:
+      POSTGRES_DB: callsight
+      POSTGRES_USER: callsight
+      POSTGRES_PASSWORD: callsight
+    ports:
+      - "5432:5432"
+    volumes:
+      - callsight_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U callsight -d callsight"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  callsight_postgres_data:
