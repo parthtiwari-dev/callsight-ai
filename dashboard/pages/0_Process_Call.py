@@ -31,13 +31,16 @@ panel(
     "or external downloads, but still writes real calls, transcripts, scores, and flags to Postgres."
 )
 
-mode = st.radio("Mode", ["Mock demo call", "Upload audio"], horizontal=True)
-
 default_id = f"streamlit-demo-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-external_call_id = st.text_input("External call id", value=default_id)
-advisor_ref = st.text_input("Advisor ref", value="advisor-streamlit-001")
-customer_ref_hashed = st.text_input("Customer hash", value="customer-streamlit-demo")
-duration_seconds = st.number_input("Duration seconds", min_value=1, value=180, step=15)
+mode = st.radio("Mode", ["Mock demo call", "Upload audio"], horizontal=True, key="process_mode")
+
+left, right = st.columns([1, 1])
+with left:
+    external_call_id = st.text_input("External call id", value=default_id)
+    advisor_ref = st.text_input("Advisor ref", value="advisor-streamlit-001")
+with right:
+    customer_ref_hashed = st.text_input("Customer hash", value="customer-streamlit-demo")
+    duration_seconds = st.number_input("Duration seconds", min_value=1, value=180, step=15)
 started_at_text = st.text_input("Started at (optional ISO timestamp)", value="")
 
 audio_ref = "mock://fixture"

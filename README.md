@@ -12,7 +12,7 @@ AI-powered sales-call intelligence for FitNova: ingest calls, transcribe/diarize
 - Quote-grounding guardrails and deterministic compliance score cap.
 - Postgres persistence for calls, transcripts, analyses, issue tags, contests, and processing events.
 - FastAPI endpoints for calls, ingestion, org/team/advisor management, dashboards, and contest resolution.
-- Streamlit dashboards for Sales Director, Team Leader, Advisor, and Call Detail.
+- Streamlit call-processing page plus dashboards for Sales Director, Team Leader, Advisor, and Call Detail.
 - Realistic seeded demo data.
 
 ## Supported Audio Formats
@@ -63,6 +63,24 @@ USE_MOCK_TRANSCRIPT=true
 docker compose up -d db
 ```
 
+## Recommended Demo Flow
+
+For the most reliable take-home walkthrough:
+
+```powershell
+docker compose up -d db
+python scripts/seed_demo_data.py
+streamlit run dashboard/Home.py
+```
+
+Then in Streamlit:
+
+```text
+Process Call -> Mock demo call -> Call Detail -> Advisor contest -> Team Leader resolve
+```
+
+The `Process Call` page runs the full loop against Postgres: ingestion, transcript generation, analysis, guardrails, persistence, and dashboard visibility. Mock mode is the recommended demo path because it is deterministic and does not require OpenAI, Hugging Face, or local audio model downloads.
+
 ## Seed Demo Data
 
 ```powershell
@@ -101,12 +119,22 @@ streamlit run dashboard/Home.py
 Pages:
 
 - Home
+- Process Call
 - Sales Director
 - Team Leader
 - Advisor
 - Call Detail
 
 The UI has a light sky-blue theme and a pitch-black dark theme, selectable from the sidebar.
+
+Streamlit demo flow:
+
+1. Open `Process Call`.
+2. Choose `Mock demo call`.
+3. Click `Process mock call`.
+4. Open `Call Detail` and select the new call.
+5. Contest a flag from the Advisor page.
+6. Resolve the pending contest from the Team Leader page.
 
 ## Mock Pipeline Demo
 
@@ -144,6 +172,8 @@ Run:
 python scripts/run_pipeline_once.py --audio-path sample_calls/demo.wav --metadata-path sample_calls/demo.metadata.json --analyze --persist
 ```
 
+Real audio is also available through the Streamlit `Process Call` page by uploading a supported audio file. If no sample audio is committed, place any short supported file at `sample_calls/demo.wav` or upload it through Streamlit.
+
 Real audio is supported by the code path, but the reliable graded demo path is mock/seeded data unless local model setup is already working.
 
 ## Real vs Mocked
@@ -162,9 +192,17 @@ Real:
 Mocked or scoped:
 
 - Live telephony/CRM vendor integration is represented through source adapters.
-- Full SSO/RBAC is simplified to demo-level request/header fields.
+- Full SSO/RBAC is intentionally out of scope; contest/admin actions are demo-level.
 - Notifications are out of scope.
 - Real speech execution depends on local model downloads and Hugging Face access.
+
+## Video Walkthrough Script
+
+- 15 seconds: explain the FitNova problem and the end-to-end pipeline.
+- 30 seconds: process a mock call in Streamlit through `Process Call`.
+- 30 seconds: inspect the stored transcript, scores, issue flags, and coaching notes in `Call Detail`.
+- 25 seconds: contest a flag as an advisor and resolve it from the Team Leader page.
+- 20 seconds: state tradeoffs: mock telephony adapter, optional real audio setup, no production auth, no background worker.
 
 ## Test
 

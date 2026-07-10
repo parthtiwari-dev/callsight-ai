@@ -25,7 +25,7 @@ cols[3].metric("Teams", len(summary["team_leaderboard"]))
 
 panel(
     "<b>Demo flow</b><br>"
-    "Seed data, open the persona dashboards, inspect a call, contest a flag, "
+    "Open Process Call, run a mock demo call, inspect it in Call Detail, contest a flag, "
     "and resolve it from the Team Leader view."
 )
 
