@@ -9,4 +9,5 @@ DbSession = Annotated[Session, Depends(get_db)]
 
 
 def get_role(x_role: Annotated[str | None, Header()] = None) -> str:
+    # Demo-only placeholder for future RBAC; routes intentionally do not enforce auth.
     return x_role or "admin"

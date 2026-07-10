@@ -34,17 +34,6 @@ def verify_quote_grounding(
     return GroundingResult(best_score >= threshold, best_score, best_line)
 
 
-def cap_scores_for_critical_tags(scores: dict[str, float], tags: list[dict]) -> dict[str, float]:
-    capped = dict(scores)
-    has_critical_compliance_tag = any(
-        tag.get("severity") == "critical" and tag.get("tag_type") == "over_promising"
-        for tag in tags
-    )
-    if has_critical_compliance_tag:
-        capped["compliance"] = min(float(capped.get("compliance", 10.0)), 3.0)
-    return capped
-
-
 @dataclass(frozen=True)
 class GuardrailResult:
     analysis: AnalysisOutput

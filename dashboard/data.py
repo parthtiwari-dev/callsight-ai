@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -25,6 +26,8 @@ from app.db.models import (
 )
 from app.db.session import SessionLocal
 from app.db.session import create_all_tables
+from app.ingestion.base import NormalizedCall
+from app.pipeline.orchestrator import process_and_store_call
 
 
 def get_session() -> Session:
@@ -177,3 +180,49 @@ def resolve_tag(db: Session, tag_id: UUID, reviewed_by: UUID, resolution: str):
         reviewed_by=reviewed_by,
         resolution=resolution,
     )
+
+
+def process_dashboard_call(
+    db: Session,
+    *,
+    external_call_id: str,
+    advisor_ref: str,
+    customer_ref_hashed: str | None,
+    duration_seconds: int,
+    started_at: datetime | None = None,
+    audio_ref: str = "mock://fixture",
+    mock: bool = True,
+    mock_analysis: bool = True,
+) -> dict:
+    normalized = NormalizedCall(
+        external_call_id=external_call_id,
+        advisor_ref=advisor_ref,
+        customer_ref_hashed=customer_ref_hashed,
+        audio_ref=audio_ref,
+        started_at=started_at,
+        duration_seconds=duration_seconds,
+        metadata={
+            "external_call_id": external_call_id,
+            "advisor_ref": advisor_ref,
+            "customer_ref_hashed": customer_ref_hashed,
+            "started_at": started_at.isoformat() if started_at else None,
+            "duration_seconds": duration_seconds,
+        },
+    )
+    result = process_and_store_call(
+        db,
+        normalized,
+        mock=mock,
+        analyze=True,
+        mock_analysis=mock_analysis,
+    )
+    call = get_call(db, UUID(result["db"]["call_id"]))
+    analysis = result.get("analysis") or {}
+    return {
+        "call_id": result["db"]["call_id"],
+        "created": result["db"]["created"],
+        "final_status": result["final_status"],
+        "overall_score": analysis.get("overall_score"),
+        "active_flag_count": crud.count_active_flags(call) if call else 0,
+        "segment_count": len(call.transcript_segments) if call else 0,
+    }

@@ -25,18 +25,6 @@ def _normalized_from_request(payload: MockIngestRequest, audio_ref: str = "mock:
     )
 
 
-def _ingest_response(result: dict, db: DbSession) -> IngestResponse:
-    call = crud.get_call(db, result["db"]["call_id"])
-    active_count = crud.count_active_flags(call) if call else 0
-    return IngestResponse(
-        call_id=result["db"]["call_id"],
-        created=result["db"]["created"],
-        final_status=result["pipeline"]["final_status"] if "pipeline" in result else result["final_status"],
-        analysis_summary=(result.get("analysis") or {}).get("summary"),
-        active_flag_count=active_count,
-    )
-
-
 @router.post("/webhooks/ingest/{source_type}", response_model=IngestResponse)
 def ingest_webhook(
     source_type: str,

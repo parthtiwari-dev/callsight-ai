@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+from uuid import UUID
 
 from app.analysis.non_sales_gate import is_likely_sales_call
 from app.db import crud
@@ -58,3 +59,38 @@ def test_pii_redaction_masks_phone_card_and_otp_like_values():
     assert "9876543210" not in redacted
     assert "4111 1111 1111 1111" not in redacted
     assert "123456" not in redacted
+
+
+def test_pii_redaction_preserves_prices():
+    text = "The plan is Rs 4999, or 4999 rupees for the quarterly package."
+
+    redacted = redact_pii(text)
+
+    assert "Rs 4999" in redacted
+    assert "4999 rupees" in redacted
+
+
+def test_dashboard_processing_helper_persists_mock_scored_call():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as db:
+        result = data.process_dashboard_call(
+            db,
+            external_call_id="dashboard-process-001",
+            advisor_ref="advisor-dashboard-001",
+            customer_ref_hashed="customer-dashboard-hash",
+            duration_seconds=180,
+            mock=True,
+            mock_analysis=True,
+        )
+        call = data.get_call(db, UUID(result["call_id"]))
+
+        assert result["created"] is True
+        assert result["final_status"] == "scored"
+        assert result["segment_count"] == 3
+        assert result["overall_score"] is not None
+        assert call is not None
+        assert call.analysis is not None
+        assert len(call.transcript_segments) == 3
+        assert call.issue_tags
